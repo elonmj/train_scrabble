@@ -4,6 +4,7 @@ from statistics import median
 from ..models.board import Board
 from ..models.types import Direction, SquareType
 
+
 class GameStats:
     """Analyzes game statistics from ISC move lists."""
     
@@ -36,6 +37,9 @@ class GameStats:
         self.quadruples = {'player1': [], 'player2': []}  # Two double word squares
         self.nonuples = {'player1': [], 'player2': []}    # Two triple word squares
         self.legendres = {'player1': [], 'player2': []}   # 10-pt letter on multiplier
+
+        # Validation flags
+        self._move_validation = True  # Enable move validation by default
 
     def parse_move_list(self, move_list: str) -> None:
         """Parse a complete ISC move list and compute all statistics."""
@@ -85,86 +89,124 @@ class GameStats:
         if next_idx < len(move_parts):
             self._parse_single_move(move_parts[next_idx:], 'player2')
 
+    def _determine_direction(self, position: str) -> Direction:
+        """Determine word direction from position format (H2 vs 2H)."""
+        first_char = position[0].upper()
+        if first_char.isalpha():
+            return Direction.HORIZONTAL
+        return Direction.VERTICAL
+
+    def _is_bingo(self, word: str, row: int, col: int, direction: Direction) -> bool:
+        """Check if move is a bingo by counting newly placed tiles."""
+        tiles_placed = 0
+        for i, letter in enumerate(word):
+            curr_row = row + (i if direction == Direction.VERTICAL else 0)
+            curr_col = col + (i if direction == Direction.HORIZONTAL else 0)
+            if self.board.is_valid_position(curr_row, curr_col) and not self.board.get_letter(curr_row, curr_col):
+                tiles_placed += 1
+        return tiles_placed == 7
+
     def _parse_single_move(self, parts: List[str], player: str) -> int:
         """Parse one player's move and update statistics. Returns number of parts consumed."""
+        if not parts:
+            return 0
+            
         if parts[0] == 'PASS':
             self.passes[player] += 1
             return 1
             
         if parts[0] == 'CHANGE':
+            if len(parts) < 2:
+                return 0
             self.changes[player] += 1
             return 2  # Consume CHANGE and the number of letters
             
         # Regular move: H2 sucates 74
-        position = parts[0]
-        word = parts[1]
-        score = int(parts[2])
-        
-        # Update basic stats
-        self.scores[player].append(score)
-        self.moves[player].append((position, word, score))
-        
-        # Check for bingo (exactly 7 letters placed)
-        if len(word) == 7:  # Only count 7-letter words as bingos
-            self.bingos[player].append((word, score))
+        if len(parts) < 3:
+            return 0
             
-        # Check for high-value letters (case insensitive)
-        for letter in word.upper():  # Convert to upper case for comparison
-            if letter in self.HIGH_VALUE_LETTERS:
-                self.high_value_plays[player].append((word, letter, position))
+        try:
+            position = parts[0]
+            word = parts[1].upper()  # Normalize to uppercase
+            score = int(parts[2])
+            
+            # Get coordinates and direction
+            row, col = self.board.parse_coordinates(position)
+            direction = self._determine_direction(position)
+            
+            # Update board state first
+            for i, letter in enumerate(word):
+                curr_row = row + (i if direction == Direction.VERTICAL else 0)
+                curr_col = col + (i if direction == Direction.HORIZONTAL else 0)
+                if self.board.is_valid_position(curr_row, curr_col):
+                    self.board.place_letter(curr_row, curr_col, letter)
+            
+            # Update basic stats
+            self.scores[player].append(score)
+            self.moves[player].append((position, word, score))
+            
+            # Check for bingo using enhanced detection
+            if self._is_bingo(word, row, col, direction):
+                self.bingos[player].append((word, score))
                 
-        # Analyze board position for multipliers
-        self._analyze_multipliers(position, word, player)
+            # Check for high-value letters
+            for letter in word:
+                if letter in self.HIGH_VALUE_LETTERS:
+                    self.high_value_plays[player].append((word, letter, position))
+                    
+            # Analyze board position for multipliers
+            self._analyze_multipliers(position, word, player)
+            
+        except (ValueError, IndexError):
+            return 0
         
         return 3  # Consumed 3 parts: position, word, score
 
     def _analyze_multipliers(self, position: str, word: str, player: str) -> None:
         """Analyze a move for multiplier usage (quadruples, nonuples, legendres)."""
-        # Convert position (e.g. 'H2' or '6F') to row, col
-        first_char = position[0].upper()
-        if first_char.isalpha():
-            # Format: H2 (letter then number)
-            row = ord(first_char) - ord('A')
-            col = int(position[1:]) - 1
-        else:
-            # Format: 6F (number then letter)
-            row = ord(position[-1].upper()) - ord('A')
-            col = int(position[:-1]) - 1
-        
-        # Determine word direction based on next position
-        direction = Direction.HORIZONTAL  # Default, would need to detect from next position
-        
-        # Track multipliers used in this word
-        double_words = 0
-        triple_words = 0
-        legendres_found = False
-        
-        # Check each square the word covers
-        for i, letter in enumerate(word):
-            curr_row = row + (i if direction == Direction.VERTICAL else 0)
-            curr_col = col + (i if direction == Direction.HORIZONTAL else 0)
+        try:
+            # Use board's coordinate parsing and our direction detection
+            row, col = self.board.parse_coordinates(position)
+            direction = self._determine_direction(position)
             
-            square_type = self.board.get_square_type(curr_row, curr_col)
+            # Track multipliers used in this word
+            double_words = 0
+            triple_words = 0
+            legendres_found = False
             
-            # Track word multipliers
-            if square_type == SquareType.DOUBLE_WORD:
-                double_words += 1
-            elif square_type == SquareType.TRIPLE_WORD:
-                triple_words += 1
+            # Check each square the word covers
+            for i, letter in enumerate(word):
+                curr_row = row + (i if direction == Direction.VERTICAL else 0)
+                curr_col = col + (i if direction == Direction.HORIZONTAL else 0)
                 
-            # Check for Legendres (10-point letter on multiplier)
-            if letter in self.HIGH_VALUE_LETTERS:
-                if (square_type == SquareType.DOUBLE_LETTER or 
-                    square_type == SquareType.TRIPLE_LETTER):
-                    legendres_found = True
-        
-        # Record multiplier achievements
-        if double_words >= 2:
-            self.quadruples[player].append((word, position))
-        if triple_words >= 2:
-            self.nonuples[player].append((word, position))
-        if legendres_found:
-            self.legendres[player].append((word, position))
+                if not self.board.is_valid_position(curr_row, curr_col):
+                    continue
+                    
+                square_type = self.board.get_square_type(curr_row, curr_col)
+                
+                # Track word multipliers
+                if square_type == SquareType.DOUBLE_WORD:
+                    double_words += 1
+                elif square_type == SquareType.TRIPLE_WORD:
+                    triple_words += 1
+                    
+                # Check for Legendres (10-point letter on multiplier)
+                if letter.upper() in self.HIGH_VALUE_LETTERS:
+                    if (square_type == SquareType.DOUBLE_LETTER or
+                        square_type == SquareType.TRIPLE_LETTER):
+                        legendres_found = True
+            
+            # Record multiplier achievements if valid
+            if double_words >= 2:
+                self.quadruples[player].append((word, position))
+            if triple_words >= 2:
+                self.nonuples[player].append((word, position))
+            if legendres_found:
+                self.legendres[player].append((word, position))
+                
+        except ValueError:
+            # If position parsing fails, skip multiplier analysis
+            pass
 
     def _parse_final_score(self, line: str) -> None:
         """Parse the final score line: 284 points          332 points"""

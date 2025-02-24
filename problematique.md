@@ -104,15 +104,6 @@ AABCELU
     *   Fonctionnement en cascade : rotation, déplacement, changement de mot, backtracking (avec différents niveaux).
     *   Mémorisation des états de la grille et des actions effectuées pour permettre le backtracking.
 
-4. **Optimisation Finale :**
-    *   Amélioration itérative de la grille après la phase de connexion.
-    *   Déplacement des mots sous-optimaux (faible score de placement, contribution à des zones isolées).
-    *   Gestion des déplacements :
-        *   Option choisie : **Réparation locale et reconnexion** (Option 2 de notre discussion).
-        *   Si un mot est déplacé, identifier les mots affectés, les supprimer, et appeler le module de connexion pour une reconnexion locale.
-        *   En cas d'échec de la reconnexion, annuler le déplacement.
-    *   Équilibrage spatial : ajout de mots courts dans les zones peu denses.
-
 **Structure des Données Principales :**
 
 *   `grille` : Matrice 15x15 (représentation de la grille).

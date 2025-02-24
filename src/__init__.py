@@ -18,12 +18,6 @@ from .modules.connection import (
 
 from .modules.optimization import optimisation_finale
 
-from .modules.utilities import (
-    placer_mot,
-    trouver_position,
-    trouver_orientation,
-    trouver_mots_courts_valides
-)
 
 from .services.word_validator import WordValidator
 
@@ -41,8 +35,6 @@ __all__ = [
     'calculate_separation',
     'optimisation_finale',
     'placer_mot',
-    'trouver_position',
-    'trouver_orientation',
-    'trouver_mots_courts_valides',
+
     'WordValidator'
 ]

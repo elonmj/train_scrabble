@@ -1,37 +1,38 @@
-from typing import Dict, List, Set, Tuple, Optional, NamedTuple
-from dataclasses import dataclass
+from typing import Dict, List, Set, Tuple, Optional
 from itertools import cycle
 import random
-from src.models import graph
-from ..models.board import Board
-from ..models.types import Direction, Move
-from ..models.gaddag import GADDAG
-from ..models.graph import ScrabbleGraph
 
-class ConnectionPoint(NamedTuple):
-    """Represents a potential connection point on the board."""
-    position: Tuple[int, int]
-    letter: str
-    direction: Direction
+# Assuming these are defined in external modules
+from src.models.board import Board
+from src.models.types import Direction, Move
+from src.models.gaddag import GADDAG
+from src.models.graph import ScrabbleGraph
+
+# Adjusted constants
+PARALLEL_MIN_DISTANCE = 2
+PERPENDICULAR_MIN_DISTANCE = 1
+MAX_TENTATIVES = 1000
+GRID_SIZE = 15
+CENTER = (7, 7)
+
+directions = cycle([Direction.HORIZONTAL, Direction.VERTICAL] if random.random() < 0.5 else [Direction.VERTICAL, Direction.HORIZONTAL])
+ZONES = [
+    ((0, 6), (0, 6)),     # Upper-left
+    ((0, 6), (8, 14)),    # Upper-right
+    ((8, 14), (0, 6)),    # Lower-left
+    ((8, 14), (8, 14))    # Lower-right
+]
+
 
 def placer_mot_central(grille: Board, dico: Set[str], lettres_appui: Dict[str, Dict[str, int]],
-                       graphe: ScrabbleGraph) -> Optional[Tuple[str, int, int]]:
-    """Place le mot central sur la grille en passant par la case centrale."""
-    mots_valides = [mot for mot in dico if 4 <= len(mot) <= 7]
-    if not mots_valides:
-        return None
-
-    mot_centre = random.choice(mots_valides)
-    direction = Direction.VERTICAL  # Force vertical placement for the central word
-
-    pos_centrale = grille.center
+                      graphe: ScrabbleGraph) -> Optional[Tuple[str, int, int]]:
+    """Place DATAIS vertically at the center of the grid (7,7)."""
+    mot_centre = "DATAIS"
+    direction = Direction.VERTICAL
     len_mot = len(mot_centre)
-    i = random.randint(0, len_mot - 1)  # Position de la lettre sur le centre
 
-    x = pos_centrale - i
-    y = pos_centrale
-
-    print(f"Placing {mot_centre} with letter {mot_centre[i]} at center ({direction})")
+    x, y = CENTER[0] - 2, CENTER[1]  # (5, 7) for 'T' at (7,7)
+    print(f"Placing {mot_centre} vertically at ({x}, {y})")
     for j, lettre in enumerate(mot_centre):
         grille.place_letter(x + j, y, lettre)
 
@@ -42,173 +43,179 @@ def placer_mot_central(grille: Board, dico: Set[str], lettres_appui: Dict[str, D
     return mot_centre, x, y
 
 
-
-
 def placer_mots_a_reviser(grille: Board, mots: List[str], dico: Set[str],
-                        lettres_appui: Dict[str, Dict[str, int]], d_max: int,
-                        sac_lettres: Dict[str, int], graphe: ScrabbleGraph,
-                        max_tentatives: int = 100) -> Tuple[Set[str], Set[str]]:
-    """
-    Place les mots à réviser sur la grille en respectant leurs lettres d'appui.
-    Version améliorée avec meilleure gestion des directions et connexions.
-    """
+                         lettres_appui: Dict[str, Dict[str, int]], d_max: int,
+                         sac_lettres: Dict[str, int], graphe: ScrabbleGraph,
+                         max_tentatives: int = MAX_TENTATIVES) -> Tuple[Set[str], Set[str]]:
+    """Place the words to revise in an isolated manner with spacing verification."""
     print(f"placer_mots_a_reviser called with mots={mots}, lettres_appui={lettres_appui}")
     mots_places = set()
     mots_non_places = set()
+    placed_words_info = [("DATAIS", (5, 7), Direction.VERTICAL)]
+    zone_cycle = cycle(ZONES)
 
-    # Use itertools.cycle to alternate between horizontal and vertical for words without constraints
-    directions = cycle([Direction.HORIZONTAL, Direction.VERTICAL])
+    mots_sorted = sorted(mots, key=len, reverse=True)
+    for mot in mots_sorted:
+        print(f"Attempting placement for {mot}")
+        place = False
+        direction = next(directions)
+        zone = next(zone_cycle)
 
-    # 1. Trier les mots par priorité de connexion
-    mots_tries = sorted(mots, key=lambda m: len(lettres_appui.get(m, {})), reverse=True)
-    print(f"mots_tries={mots_tries}")
+        for dir_attempt in [direction, Direction.HORIZONTAL if direction == Direction.VERTICAL else Direction.VERTICAL]:
+            (row_min, row_max), (col_min, col_max) = zone
+            for tentative in range(max_tentatives // 2):
+                max_row = min(row_max, GRID_SIZE - (len(mot) if dir_attempt == Direction.VERTICAL else 1))
+                max_col = min(col_max, GRID_SIZE - (len(mot) if dir_attempt == Direction.HORIZONTAL else 1))
+                if max_row < row_min or max_col < col_min:
+                    print(f"  No valid positions in zone {zone} for {mot} in {dir_attempt}")
+                    continue
 
-    # 2. Obtenir les informations du mot central
-    mot_central = graphe.central_word
-    if mot_central in graphe.nodes:
-        node_central = graphe.nodes[mot_central]
-        pos_centrale = node_central.position
-        dir_centrale = node_central.direction
+                row = random.randint(row_min, max_row)
+                col = random.randint(col_min, max_col)
 
-        # 3. Trouver les points de connexion pour chaque mot
-        points_connexion = trouver_points_connexion(
-            mot_central, pos_centrale, dir_centrale, lettres_appui, board_size=grille.size
-        )
+                if est_position_valide(mot, row, col, dir_attempt, grille, dico, placed_words_info=placed_words_info):
+                    for i, lettre in enumerate(mot):
+                        if dir_attempt == Direction.HORIZONTAL:
+                            grille.place_letter(row, col + i, lettre)
+                        else:
+                            grille.place_letter(row + i, col, lettre)
+                    graphe.add_word(mot, (row, col), dir_attempt)
+                    mots_places.add(mot)
+                    placed_words_info.append((mot, (row, col), dir_attempt))
+                    all_placed = mots_places | {"DATAIS"}
+                    graphe.update_from_board(grille, all_placed, lettres_appui)
+                    print(f"Successfully placed {mot} at ({row}, {col}) in direction {dir_attempt} (zone: {zone})")
+                    place = True
+                    break
 
-        # 4. Placer les mots en utilisant les points de connexion
-        for mot in mots_tries:
-            place = False
-            if mot in points_connexion:  # Check if we have connection points
-                # Try each connection point
-                for point in points_connexion[mot]:
-                    # Get the required index for this letter from lettres_appui
-                    required_idx = lettres_appui[mot][point.letter]
-                    # Check if the required index is valid and the word has the correct letter at that index
-                    if required_idx >= 0 and required_idx < len(mot) and mot[required_idx] == point.letter:
-                        pos_debut = calculer_position_mot(mot, point, required_idx)
-                        print(f"Trying to connect {mot} at {pos_debut} using letter {point.letter} (required index {required_idx})")
+            if place:
+                break
 
-                        # Try the word's direction
-                        if est_position_valide(mot, pos_debut[0], pos_debut[1],
-                                           point.direction, grille, dico,
-                                           required_connection=point.position):
-                            # Placer le mot
-                            for j, l in enumerate(mot):
-                                if point.direction == Direction.HORIZONTAL:
-                                    grille.place_letter(pos_debut[0], pos_debut[1] + j, l)
-                                else:
-                                    grille.place_letter(pos_debut[0] + j, pos_debut[1], l)
+        if not place:
+            print(f"Impossible de placer le mot {mot} après {max_tentatives} tentatives")
+            mots_non_places.add(mot)
 
-                            # Add word to graph and update places without resetting previous placements
-                            graphe.add_word(mot, pos_debut, point.direction)
-                            mots_places.add(mot)
-                            # Update graph with accumulated words
-                            all_placed = mots_places | {mot}
-                            graphe.update_from_board(grille, all_placed, lettres_appui)
-                            # Print debug info
-                            print(f"Successfully placed {mot} at {pos_debut} in direction {point.direction}")
-                            place = True
-                            break
-
-            # Try random placement if word has no required connection points
-            if not place and mot not in lettres_appui:
-                print(f"Attempting random placement for {mot} (no connection requirements)")
-                # Get the next direction from our alternating cycle
-                direction = next(directions)
-                
-                # Try both directions if first one fails
-                for dir_attempt in [direction, Direction.HORIZONTAL if direction == Direction.VERTICAL else Direction.VERTICAL]:
-                    for tentative in range(max_tentatives // 2):  # Split attempts between directions
-                        # Calculate valid boundaries
-                        max_row = grille.size - (len(mot) if dir_attempt == Direction.VERTICAL else 1)
-                        max_col = grille.size - (len(mot) if dir_attempt == Direction.HORIZONTAL else 1)
-
-                        if max_row < 0 or max_col < 0:  # Skip if word is too long for this direction
-                            continue
-
-                        # Try a random position
-                        row = random.randint(0, max_row)
-                        col = random.randint(0, max_col)
-
-                        if est_position_valide(mot, row, col, dir_attempt, grille, dico):
-                            # Place the word
-                            for i, lettre in enumerate(mot):
-                                if dir_attempt == Direction.HORIZONTAL:
-                                    grille.place_letter(row, col + i, lettre)
-                                else:
-                                    grille.place_letter(row + i, col, lettre)
-
-                            # Add word to graph and update places
-                            graphe.add_word(mot, (row, col), dir_attempt)
-                            mots_places.add(mot)
-                            # Update graph with accumulated words
-                            all_placed = mots_places | {mot}
-                            graphe.update_from_board(grille, all_placed, lettres_appui)
-                            # Print debug info
-                            print(f"Successfully placed {mot} at {(row, col)} in direction {dir_attempt} (random placement)")
-                            place = True
-                            break
-                    
-                    if place:  # If placed successfully in this direction, stop trying
-                        break
-
-            if not place:
-                print(f"Impossible de placer le mot {mot}")
-                mots_non_places.add(mot)
+    if mots_places:
+        verifier_isolation_et_clarte(grille, placed_words_info)
 
     return mots_places, mots_non_places
 
+
 def est_position_valide(mot: str, row: int, col: int, direction: Direction,
-                          grille: Board, dico: Set[str],
-                          required_connection: Optional[Tuple[int, int]] = None,
-                          skip_adjacent: Optional[Set[Tuple[int,int]]] = None) -> bool:
-    """
-    Vérifie si une position est valide pour placer un mot.
-    Validation simplifiée : uniquement les limites du plateau et les chevauchements.
+                        grille: Board, dico: Set[str],
+                        placed_words_info: Optional[List[Tuple[str, Tuple[int, int], Direction]]] = None) -> bool:
+    """Check the validity of placement for isolated words with reduced spacing."""
+    print(f"Checking {mot} at ({row}, {col}), dir={direction}")
     
-    Args:
-        required_connection: Position spécifique où le mot doit se connecter
-    """
-    print(f"est_position_valide: mot={mot}, pos=({row}, {col}), dir={direction}, required_connection={required_connection}") # DEBUG
-    # Check boundaries
-    if row < 0 or col < 0:
-        print(f"   boundaries failed: row={row}, col={col}") # DEBUG
-        print(f"est_position_valide returns False (boundaries)") # DEBUG
+    # Boundary check
+    if row < 0 or col < 0 or (direction == Direction.HORIZONTAL and col + len(mot) > GRID_SIZE) or \
+       (direction == Direction.VERTICAL and row + len(mot) > GRID_SIZE):
+        print(f"  Rejected: Out of bounds")
         return False
-    if direction == Direction.HORIZONTAL:
-        if col + len(mot) > grille.size:
-            print(f"  boundaries failed: col + len(mot) = {col + len(mot)}, grille.size = {grille.size}") # DEBUG
-            print(f"est_position_valide returns False (boundaries - horizontal)") # DEBUG
+
+    # Overlap check
+    new_positions = [(row + i if direction == Direction.VERTICAL else row,
+                      col + i if direction == Direction.HORIZONTAL else col) for i in range(len(mot))]
+    for r, c in new_positions:
+        if grille.get_letter(r, c):
+            print(f"  Rejected: Overlap conflict at ({r}, {c})")
             return False
+
+    # Spacing check with previously placed words
+    if placed_words_info:
+        for placed_word, (pr, pc), placed_dir in placed_words_info:
+            placed_positions = [(pr + j if placed_dir == Direction.VERTICAL else pr,
+                                 pc + j if placed_dir == Direction.HORIZONTAL else pc) for j in range(len(placed_word))]
+
+            if direction == placed_dir:  # Parallel check
+                if direction == Direction.VERTICAL:
+                    distance = abs(col - pc)
+                    new_range = (row, row + len(mot) - 1)
+                    placed_range = (pr, pr + len(placed_word) - 1)
+                    overlap = max(new_range[0], placed_range[0]) <= min(new_range[1], placed_range[1])
+                    if distance < PARALLEL_MIN_DISTANCE and overlap:
+                        print(f"  Rejected: Parallel spacing conflict with {placed_word}: distance={distance}, overlap={overlap}")
+                        return False
+                else:  # HORIZONTAL
+                    distance = abs(row - pr)
+                    new_range = (col, col + len(mot) - 1)
+                    placed_range = (pc, pc + len(placed_word) - 1)
+                    overlap = max(new_range[0], placed_range[0]) <= min(new_range[1], placed_range[1])
+                    if distance < PARALLEL_MIN_DISTANCE and overlap:
+                        print(f"  Rejected: Parallel spacing conflict with {placed_word}: distance={distance}, overlap={overlap}")
+                        return False
+            # Perpendicular check
+            for r, c in new_positions:
+                for pr_j, pc_j in placed_positions:
+                    distance = abs(r - pr_j) + abs(c - pc_j)
+                    if distance < PERPENDICULAR_MIN_DISTANCE:
+                        print(f"  Rejected: Perpendicular spacing conflict with {placed_word} at ({r}, {c}) - distance={distance}")
+                        return False
+
+    print(f"  Accepted: Position is valid")
+    return True
+
+
+def verifier_isolation_et_clarte(grille: Board, placed_words_info: List[Tuple[str, Tuple[int, int], Direction]]) -> None:
+    """Verify isolation and measure grid clarity."""
+    print("\n=== Vérification de l’isolation et de la clarté ===")
+    
+    all_positions = {}
+    for word, (row, col), direction in placed_words_info:
+        positions = [(row + i if direction == Direction.VERTICAL else row,
+                      col + i if direction == Direction.HORIZONTAL else col) for i in range(len(word))]
+        all_positions[word] = positions
+
+    for word1, pos1 in all_positions.items():
+        for word2, pos2 in all_positions.items():
+            if word1 == word2:
+                continue
+            for r1, c1 in pos1:
+                for r2, c2 in pos2:
+                    distance = abs(r1 - r2) + abs(c1 - c2)
+                    if distance < 2:
+                        print(f"Erreur : {word1} et {word2} sont trop proches ou adjacents à ({r1}, {c1}) et ({r2}, {c2})")
+                        return
+
+    print("Tous les mots sont isolés (distance minimale ≥ 2).")
+
+    distances = []
+    for i, (word1, pos1) in enumerate(all_positions.items()):
+        for word2, pos2 in list(all_positions.items())[i+1:]:
+            min_dist = float('inf')
+            for r1, c1 in pos1:
+                for r2, c2 in pos2:
+                    dist = abs(r1 - r2) + abs(c1 - c2)
+                    min_dist = min(min_dist, dist)
+            distances.append(min_dist)
+            print(f"Distance minimale entre {word1} et {word2} : {min_dist}")
+
+    if distances:
+        avg_distance = sum(distances) / len(distances)
+        print(f"Distance moyenne entre les mots : {avg_distance:.2f}")
+        if avg_distance >= 5:
+            print("Clarté de la grille : Élevée (bonne répartition)")
+        elif avg_distance >= 3:
+            print("Clarté de la grille : Moyenne (acceptable)")
+        else:
+            print("Clarté de la grille : Faible (trop serré)")
     else:
-        if row + len(mot) > grille.size:
-            print(f"  boundaries failed: row + len(mot) = {row + len(mot)}, grille.size = {grille.size}") # DEBUG
-            print(f"est_position_valide returns False (boundaries - vertical)") # DEBUG
-            return False
+        print("Pas assez de mots pour mesurer la clarté.")
 
-    # Initialize required connection tracking
-    required_connection_found = required_connection is None
 
-    # Check each position along the word
-    for i in range(len(mot)):
-        r = row + (i if direction == Direction.VERTICAL else 0)
-        c = col + (i if direction == Direction.HORIZONTAL else 0)
-        
-        # Check letter conflicts
-        existing = grille.get_letter(r, c)
-        if existing and existing != mot[i]:
-            print(f"  letter conflict at ({r}, {c}): existing={existing}, new={mot[i]}") # DEBUG
-            print(f"est_position_valide returns False (letter conflict)") # DEBUG
-            return False
-        
-        # Check required connection point
-        if required_connection and (r, c) == required_connection:
-            if mot[i] == grille.get_letter(r, c):
-                required_connection_found = True
-            else:
-                print(f"  required connection failed at ({r}, {c}): word_letter={mot[i]}, board_letter={grille.get_letter(r, c)}") # DEBUG
-                print(f"est_position_valide returns False (required connection)") # DEBUG
-                return False
+if __name__ == "__main__":
+    grille = Board()
+    dico = {"DATAIS", "BACCARAT", "CACABERA", "BACCARAS"}
+    lettres_appui = {
+        "CACABERA": {"E": 6},
+        "BACCARAS": {"S": 7},
+        "BACCARAT": {"T": 7}
+    }
+    graphe = ScrabbleGraph()
+    sac_lettres = {}
 
-    print(f"est_position_valide returns {required_connection_found}") # DEBUG
-    return required_connection_found
+    placer_mot_central(grille, dico, lettres_appui, graphe)
+    grille.debug_print("Après placement du mot central")
+    mots_a_reviser = ["BACCARAT", "CACABERA", "BACCARAS"]
+    placer_mots_a_reviser(grille, mots_a_reviser, dico, lettres_appui, 5, sac_lettres, graphe)
+    grille.debug_print("Après placement des mots à réviser")

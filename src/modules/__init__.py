@@ -18,9 +18,4 @@ from .connection import (
 
 from .optimization import optimisation_finale
 
-from .utilities import (
-    placer_mot,
-    trouver_position,
-    trouver_orientation,
-    trouver_mots_courts_valides
-)
+

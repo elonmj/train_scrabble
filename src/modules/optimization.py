@@ -2,12 +2,7 @@ from typing import Dict, List, Set, Tuple, Optional
 from ..models.board import Board
 from ..models.types import Direction, Move
 from ..models.gaddag import GADDAG
-from .utilities import (
-    placer_mot,
-    trouver_position,
-    trouver_orientation,
-    trouver_mots_courts_valides
-)
+
 from .connection import calculate_separation
 
 # Constants for scoring adjustments

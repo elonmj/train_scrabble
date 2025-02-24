@@ -7,7 +7,7 @@ from src.models.graph import ScrabbleGraph
 from src.models.types import Direction
 from src.modules.initialization import placer_mot_central, placer_mots_a_reviser
 from src.modules.connection import phase_de_connexion
-from src.modules.optimization import optimisation_finale
+
 
 
 def charger_dictionnaire(chemin_fichier: str) -> Set[str]:
@@ -34,8 +34,9 @@ def initialiser_sac_lettres() -> Dict[str, int]:
 
 
 def generer_situation_entrainement(mots_a_reviser: Set[str], dico: Set[str],
-                                 gaddag: GADDAG, sac_lettres: Dict[str, int],
-                                 d_max: int = 3) -> Board:
+                                  gaddag: GADDAG, sac_lettres: Dict[str, int],
+                                  lettres_appui: Dict[str, Dict[str, int]],
+                                  d_max: int = 3) -> Board:
     """
     Génère une situation d'entraînement complète.
     
@@ -44,22 +45,24 @@ def generer_situation_entrainement(mots_a_reviser: Set[str], dico: Set[str],
         dico: Dictionnaire des mots valides
         gaddag: Structure GADDAG
         sac_lettres: Dictionnaire des lettres disponibles
+        lettres_appui: Dictionnaire des lettres d'appui pour chaque mot
         d_max: Distance maximale entre les mots
         
     Returns:
         Plateau de jeu généré
+        
+    Raises:
+        ValueError: Si un mot à réviser n'a pas ses lettres d'appui définies
     """
+    # Valider que tous les mots à réviser ont leurs lettres d'appui définies
+    for mot in mots_a_reviser:
+        if mot not in lettres_appui:
+            raise ValueError(f"Le mot '{mot}' n'a pas ses lettres d'appui définies")
+
     # 1. Créer la grille
     grille = Board()
     
-    # 2. Définir les lettres d'appui par mot
-    lettres_appui = {
-        'CACABERA': {'E': 6},  # E en position 6
-        'BACCARAS': {'S': 7},  # S en position 7
-        'BACCARAT': {'T': 7}   # T en position 7
-    }
-    
-    # 3. Initialiser l'ensemble des mots placés
+    # 2. Initialiser l'ensemble des mots placés
     mots_places = set()
     
     # Créer le graphe de Scrabble
@@ -126,15 +129,24 @@ def main():
         gaddag.add_word(mot)
     print(f"GADDAG créé avec {gaddag.word_count} mots")
     
-    # 3. Définir les mots à réviser
+    # 3. Définir les mots à réviser et leurs lettres d'appui
     mots_a_reviser = {"CACABERA", "BACCARAS", "BACCARAT"}
+    # Définir les lettres d'appui pour chaque mot avec leur position
+    lettres_appui = {
+        'CACABERA': {'E': 6},  # E en position 6
+        'BACCARAS': {'S': 7},  # S en position 7
+        'BACCARAT': {'T': 7}   # T en position 7
+    }
     print(f"\nMots à réviser : {', '.join(mots_a_reviser)}")
+    print("Lettres d'appui définies pour chaque mot :")
+    for mot, appuis in lettres_appui.items():
+        print(f"  {mot}: {', '.join(f'{lettre} en position {pos}' for lettre, pos in appuis.items())}")
     
     # 4. Initialiser le sac de lettres
     sac_lettres = initialiser_sac_lettres()
     
     # 5. Générer la situation d'entraînement
-    grille = generer_situation_entrainement(mots_a_reviser, dico, gaddag, sac_lettres)
+    grille = generer_situation_entrainement(mots_a_reviser, dico, gaddag, sac_lettres, lettres_appui)
     
     # 6. Afficher le résultat
     print("\nSituation d'entraînement générée :")
