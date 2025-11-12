@@ -85,7 +85,7 @@ AABCELU
 
 
 
-## Plan Détaillé de l'Algorithme (Prompt Logique)
+## Plan Détaillé de l'Algorithme
 
 **Objectif :** Générer une grille de Scrabble d'entraînement avec une liste de mots à réviser `M`, en maximisant la connexité et la qualité du placement.
 
