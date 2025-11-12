@@ -18,8 +18,8 @@ from .modules.connection import (
 
 from .modules.optimization import optimisation_finale
 
-
 from .services.word_validator import WordValidator
+from .services.game_stats import GameStats
 
 __all__ = [
     'Board',
@@ -35,6 +35,6 @@ __all__ = [
     'calculate_separation',
     'optimisation_finale',
     'placer_mot',
-
-    'WordValidator'
+    'WordValidator',
+    'GameStats'
 ]
