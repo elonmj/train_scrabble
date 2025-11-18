@@ -5,8 +5,7 @@ from src.models.board import Board
 from src.models.gaddag import GADDAG
 from src.models.graph import ScrabbleGraph
 from src.models.types import Direction
-from src.modules.initialization import placer_mot_central, placer_mots_a_reviser
-from src.modules.connection import phase_de_connexion
+from src.modules.cbic import CBIC_generer_grille
 
 
 
@@ -36,20 +35,23 @@ def initialiser_sac_lettres() -> Dict[str, int]:
 def generer_situation_entrainement(mots_a_reviser: Set[str], dico: Set[str],
                                   gaddag: GADDAG, sac_lettres: Dict[str, int],
                                   lettres_appui: Dict[str, Dict[str, int]],
-                                  d_max: int = 3) -> Board:
+                                  mot_central: str = "DATAIS") -> Board:
     """
-    Génère une situation d'entraînement complète.
+    Génère une situation d'entraînement complète en utilisant l'algorithme CBIC.
+    
+    L'algorithme CBIC (Construction Incrémentale par Contraintes) garantit la connexité
+    par construction en ne plaçant que des mots qui se connectent aux mots existants.
     
     Args:
         mots_a_reviser: Ensemble des mots à réviser
-        dico: Dictionnaire des mots valides
-        gaddag: Structure GADDAG
-        sac_lettres: Dictionnaire des lettres disponibles
+        dico: Dictionnaire des mots valides (non utilisé avec CBIC mais gardé pour compatibilité)
+        gaddag: Structure GADDAG pour validation des mots
+        sac_lettres: Dictionnaire des lettres disponibles (non utilisé mais gardé pour compatibilité)
         lettres_appui: Dictionnaire des lettres d'appui pour chaque mot
-        d_max: Distance maximale entre les mots
+        mot_central: Mot central à placer (défaut: "DATAIS")
         
     Returns:
-        Plateau de jeu généré
+        Plateau de jeu généré avec tous les mots connectés
         
     Raises:
         ValueError: Si un mot à réviser n'a pas ses lettres d'appui définies
@@ -59,59 +61,27 @@ def generer_situation_entrainement(mots_a_reviser: Set[str], dico: Set[str],
         if mot not in lettres_appui:
             raise ValueError(f"Le mot '{mot}' n'a pas ses lettres d'appui définies")
 
-    # 1. Créer la grille
-    grille = Board()
-    
-    # 2. Initialiser l'ensemble des mots placés
-    mots_places = set()
-    
-    # Créer le graphe de Scrabble
-    graphe = ScrabbleGraph(grille)
-    
-    # 4. Placer le mot central
-    print("\nPlacement du mot central...")
-    resultat = placer_mot_central(grille, dico, lettres_appui, graphe)
-    if not resultat:
-        raise ValueError("Impossible de placer le mot central")
-    mot_central, x, y = resultat
-    mots_places.add(mot_central)  # Important: ajouter le mot central aux mots placés
-    print(f"Mot central placé : {mot_central} en ({x}, {y})")
-    print("État du graphe après placement du mot central:")
-    graphe.debug_print()
-    grille.debug_print("Après placement du mot central")
-    
-    # 5. Placer les mots à réviser
-    print("\nPlacement des mots à réviser...")
-    mots_places_reviser, mots_non_places = placer_mots_a_reviser(
-        grille, list(mots_a_reviser), dico, lettres_appui, d_max, sac_lettres, graphe
-    )
-    print(f"Mots placés : {', '.join(mots_places_reviser)}")
-    print(f"Mots non placés : {', '.join(mots_non_places)}")
-    grille.debug_print("Après placement des mots à réviser")
-    
-    # 6. Mettre à jour l'ensemble des mots placés
-    mots_places.update(mots_places_reviser)
-    
-    # 7. Récupérer les orientations depuis le graphe
-    orientations = {}
-    for mot in mots_places:
-        if mot in graphe.nodes:
-            orientations[mot] = graphe.nodes[mot].direction
-        else:
-            print(f"Warning: Word '{mot}' in mots_places but not in graphe.nodes")
-    
-    # 8. Phase de connexion avec le graphe
-    print("\nPhase de connexion...")
-    connection_success = phase_de_connexion(
-        grille, set(mots_non_places), mots_places, graphe,
-        orientations, dico, lettres_appui, d_max,
-        sac_lettres, gaddag
+    # Utiliser l'algorithme CBIC pour générer la grille
+    # CBIC garantit la connexité par construction en une seule phase
+    grille, graphe, mots_places = CBIC_generer_grille(
+        list(mots_a_reviser),
+        gaddag,
+        lettres_appui,
+        mot_central
     )
     
-    print(f"\nRésultat de la phase de connexion: {'Succès' if connection_success else 'Échec'}")
-    print("\nÉtat de la grille après connexion:")
+    print("\n=== Résultat final ===")
+    print(f"Mots placés: {len(mots_places)}/{len(mots_a_reviser)} "
+          f"({len(mots_places) / len(mots_a_reviser) * 100:.1f}%)")
+    print(f"Mots: {', '.join(sorted(mots_places))}")
+    
+    mots_non_places = set(mots_a_reviser) - mots_places
+    if mots_non_places:
+        print(f"Mots non placés: {', '.join(sorted(mots_non_places))}")
+    
+    print("\nÉtat de la grille finale:")
     grille.debug_print()
-    print("\nÉtat du graphe après connexion:")
+    print("\nÉtat du graphe final:")
     graphe.debug_print()
         
     return grille
