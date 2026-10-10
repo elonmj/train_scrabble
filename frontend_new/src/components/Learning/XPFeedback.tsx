@@ -7,8 +7,10 @@ import type { XPReward, WordMastery } from '../../types';
 interface XPFeedbackProps {
     isOpen: boolean;
     correct: boolean;
-    word: string;
-    expectedWord?: string; // Pour afficher la bonne réponse si erreur
+    /** Titre de l'en-tête : « Scrabble ! », « Autre scrabble accepté », « Solution révélée ». */
+    title: string;
+    /** Le mot, sous le titre - joué si correct, attendu sinon. */
+    word?: string;
     xp: XPReward;
     mastery?: WordMastery;
     /**
@@ -27,8 +29,8 @@ interface XPFeedbackProps {
 export const XPFeedback: React.FC<XPFeedbackProps> = ({
     isOpen,
     correct,
+    title,
     word,
-    expectedWord,
     xp,
     mastery,
     details,
@@ -36,6 +38,12 @@ export const XPFeedback: React.FC<XPFeedbackProps> = ({
     onContinue,
     secondaryAction
 }) => {
+    const lignesXP = xp.breakdown.map(line => {
+        const points = line.match(/^\+\d+ XP/)?.[0] ?? '';
+        const raison = line.replace(/^\+\d+ XP\s*/, '').replace(/[()]/g, '');
+        return { points, raison: raison.charAt(0).toUpperCase() + raison.slice(1) };
+    });
+
     return (
         <AnimatePresence>
             {isOpen && (
@@ -51,75 +59,65 @@ export const XPFeedback: React.FC<XPFeedbackProps> = ({
                         animate={{ scale: 1, y: 0 }}
                         exit={{ scale: 0.8, y: 20 }}
                         onClick={(e) => e.stopPropagation()}
-                        className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="xp-feedback-titre"
+                        className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden tabular-nums"
                     >
-                        {/* Header */}
+                        {/* En-tête : le verdict, puis le mot */}
                         <div className={clsx(
-                            "px-6 py-5 flex items-center gap-3",
+                            "px-6 py-5 flex items-center gap-4",
                             correct ? "bg-emerald-500" : "bg-red-500"
                         )}>
-                            <div className="p-2 bg-white/20 rounded-full">
-                                {correct ? <Check className="w-6 h-6 text-white" /> : <X className="w-6 h-6 text-white" />}
+                            <div className="shrink-0 w-11 h-11 rounded-full bg-white/20 flex items-center justify-center">
+                                {correct
+                                    ? <Check className="w-6 h-6 text-white" strokeWidth={3} />
+                                    : <X className="w-6 h-6 text-white" strokeWidth={3} />}
                             </div>
-                            <div>
-                                <h3 className="font-bold text-white text-lg">
-                                    {correct ? 'Excellent!' : 'Pas tout à fait...'}
+                            <div className="min-w-0">
+                                <h3 id="xp-feedback-titre" className="font-bold text-white text-xl leading-tight">
+                                    {title}
                                 </h3>
-                                <p className="text-white/90 font-mono tracking-wider">{word}</p>
+                                {word && (
+                                    <p className="mt-0.5 font-mono font-bold text-white/90 tracking-[0.2em] truncate">
+                                        {word}
+                                    </p>
+                                )}
                             </div>
                         </div>
 
-                        {/* XP Breakdown - seulement si correct */}
-                        {correct && xp.total > 0 && (
-                            <div className="px-6 py-4 space-y-2">
-                                {xp.breakdown.map((line, i) => {
-                                    const match = line.match(/^\+(\d+) XP/);
-                                    const points = match ? match[0] : '';
-                                    const reason = line.replace(/^\+\d+ XP\s*/, '').replace(/[()]/g, '');
-                                    return (
-                                        <div key={i} className="flex items-center justify-between text-sm">
-                                            <span className="text-slate-600">{reason}</span>
-                                            <span className="font-bold text-emerald-600">{points}</span>
-                                        </div>
-                                    );
-                                })}
-                                <div className="border-t border-slate-200 pt-2 mt-2 flex items-center justify-between">
-                                    <span className="font-bold text-slate-800">Total</span>
-                                    <span className="font-bold text-xl text-emerald-600">+{xp.total} XP</span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Info révision - si correct et date dispo */}
-                        {correct && mastery?.dueDate && (
-                            <div className="px-6 pb-4">
-                                <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 px-3 py-2 rounded-lg">
-                                    <Clock className="w-4 h-4" />
-                                    <span>Prochaine révision: {formatDueDate(mastery.dueDate)}</span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Débriefing du coup */}
+                        {/* Le coup : ce qui compte d'abord pour un joueur de scrabble */}
                         {details && <div className="px-6 py-4">{details}</div>}
 
-                        {/* Erreur: montrer la bonne réponse */}
-                        {!correct && (
-                            <div className="px-6 pb-4">
-                                {expectedWord && (
-                                    <p className="text-slate-600 text-sm mb-2">
-                                        Le mot attendu était: <span className="font-mono font-bold text-slate-800">{expectedWord}</span>
-                                        <span className="text-slate-400"> — il est montré sur le plateau.</span>
-                                    </p>
-                                )}
-                                <p className="text-slate-500 text-xs">
-                                    Ce mot sera reproposé bientôt pour renforcer votre mémoire.
-                                </p>
+                        {/* L'XP gagnée, en second plan */}
+                        {correct && xp.total > 0 && (
+                            <div className="mx-6 border-t border-slate-100 py-4 space-y-1.5 text-sm">
+                                {lignesXP.map((l, i) => (
+                                    <div key={i} className="flex items-center justify-between">
+                                        <span className="text-slate-500">{l.raison}</span>
+                                        <span className="font-semibold text-slate-700">{l.points}</span>
+                                    </div>
+                                ))}
+                                <div className="flex items-center justify-between pt-1.5">
+                                    <span className="font-bold text-slate-800">Total</span>
+                                    <span className="font-bold text-lg text-emerald-600">+{xp.total} XP</span>
+                                </div>
                             </div>
                         )}
 
-                        {/* Action */}
-                        <div className="px-6 pb-6 flex flex-col gap-2">
+                        {/* Actions, avec la prochaine révision juste au-dessus */}
+                        <div className="px-6 pb-6 pt-2 flex flex-col gap-2">
+                            {correct && mastery?.dueDate && (
+                                <p className="flex items-center justify-center gap-1.5 text-xs text-slate-400 pb-1">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    Prochaine révision {formatDueDate(mastery.dueDate)}
+                                </p>
+                            )}
+                            {!correct && (
+                                <p className="text-center text-xs text-slate-400 pb-1">
+                                    Ce tirage reviendra bientôt pour bien l'ancrer.
+                                </p>
+                            )}
                             {secondaryAction && (
                                 <button
                                     onClick={secondaryAction.onClick}
@@ -131,9 +129,10 @@ export const XPFeedback: React.FC<XPFeedbackProps> = ({
                             )}
                             <button
                                 onClick={onContinue}
+                                autoFocus
                                 className={clsx(
                                     "w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-colors",
-                                    correct ? "bg-emerald-500 hover:bg-emerald-600" : "bg-slate-500 hover:bg-slate-600"
+                                    correct ? "bg-emerald-500 hover:bg-emerald-600" : "bg-slate-700 hover:bg-slate-800"
                                 )}
                             >
                                 {continueLabel} <ArrowRight className="w-4 h-4" />

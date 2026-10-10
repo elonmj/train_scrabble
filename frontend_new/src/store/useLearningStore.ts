@@ -61,12 +61,12 @@ function calculateXP(
 
     // Base XP
     const base = 10;
-    breakdown.push('+10 XP (réponse correcte)');
+    breakdown.push('+10 XP (bonne réponse)');
 
     // Bonus difficulté
     const difficultyBonus = Math.round(mastery.difficulty * 15);
     if (difficultyBonus > 0) {
-        breakdown.push(`+${difficultyBonus} XP (difficulté)`);
+        breakdown.push(`+${difficultyBonus} XP (mot difficile)`);
     }
 
     // Bonus vitesse
@@ -80,7 +80,7 @@ function calculateXP(
     const currentStreak = progress?.currentStreak || 0;
     const streakBonus = Math.min(currentStreak * 2, 20);
     if (streakBonus > 0) {
-        breakdown.push(`+${streakBonus} XP (streak ${currentStreak}j)`);
+        breakdown.push(`+${streakBonus} XP (série de ${currentStreak} jour${currentStreak > 1 ? "s" : ""})`);
     }
 
     const total = base + difficultyBonus + speedBonus + streakBonus;
